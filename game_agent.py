@@ -16,6 +16,62 @@ class Timeout(Exception):
     pass
 
 
+class CustomScore:
+    def __init__(self, game, player):
+        self.player = player
+        self.game = game
+
+        get_legal_moves = game.get_legal_moves
+        self.moves_player = get_legal_moves(player)
+        self.moves_opponent = get_legal_moves(game.get_opponent(player))
+
+    def _is_winner_or_loser(self):
+        if self.game.is_loser(self.player):
+            return INFINITY_NEGATIVE
+        elif self.game.is_winner(self.player):
+            return INFINITY_POSITIVE
+        else:
+            return None
+
+    def relative_moves(self, player_alpha=0.25, opponent_alpha=0.75):
+        """
+        This evaluation function takes into account the relative number of legal moves left to each player
+        as well as the state of the game
+        If the opponent has more moves left then we get a larger negative number
+        filled_squares magnifies this ratio as the game progresses so stakes are higher
+        In addition the 0.75 vs. 0.25 help with controlling how aggressive the player is
+        This strategy somewhat consistently beats ID_Improved in aggregate
+        """
+
+        total_squares = self.game.height * self.game.width
+        filled_squares = total_squares - len(self.game.get_blank_spaces())
+
+        moves_player_count = len(self.moves_player)
+        moves_opponent_count = len(self.moves_opponent)
+
+        # Return maximum scores if no moves left by either player
+        if self.player is self.game.inactive_player and moves_opponent_count == 0:
+            return INFINITY_POSITIVE
+        elif self.player is self.game.active_player and moves_player_count == 0:
+            return INFINITY_NEGATIVE
+
+        return -1 * filled_squares * (moves_opponent_count + opponent_alpha) / (moves_player_count + player_alpha)
+
+    def maximize_diff(self, player_factor=1, opponent_factor=1):
+        winner_or_loser = self._is_winner_or_loser()
+        if winner_or_loser is not None:
+            return winner_or_loser
+
+        return len(self.moves_player) * player_factor - len(self.moves_opponent) * opponent_factor
+
+    def maximize_diff_progression(self):
+        winner_or_loser = self._is_winner_or_loser()
+        if winner_or_loser is not None:
+            return winner_or_loser
+
+        return (1 / len(self.game.get_blank_spaces())) * self.maximize_diff()
+
+
 def custom_score(game, player):
     """Calculate the heuristic value of a game state from the point of view
     of the given player.
@@ -34,26 +90,8 @@ def custom_score(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-
-    get_legal_moves = game.get_legal_moves
-    moves_player = len(get_legal_moves(player))
-    moves_opponent = len(get_legal_moves(game.get_opponent(player)))
-    total_squares = game.height * game.width
-    filled_squares = total_squares - len(game.get_blank_spaces())
-
-    # Return maximum scores if no moves left by either player
-    if player is game.inactive_player and moves_opponent == 0:
-        return INFINITY_POSITIVE
-    elif player is game.active_player and moves_player == 0:
-        return INFINITY_NEGATIVE
-
-    # This evaluation function takes into account the relative number of legal moves left to each player
-    # as well as the state of the game
-    # If the opponent has more moves left then we get a larger negative number
-    # filled_squares magnifies this ratio as the game progresses so stakes are higher
-    # In addition the 0.75 vs. 0.25 help with controlling how aggressive the player is
-    # This strategy somewhat consistently beats ID_Improved in aggregate
-    return -(moves_opponent + 0.75) / (moves_player + 0.25) * filled_squares
+    score = CustomScore(game, player)
+    return score.relative_moves()
 
 
 class CustomPlayer:
